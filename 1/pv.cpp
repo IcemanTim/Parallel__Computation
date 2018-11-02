@@ -24,7 +24,8 @@ void makediag(double *DD, double *Aval, int *AI, int *AJ, int N) {
 
     int num = AI[0];
     int row = 0;
-
+    
+    int i;
     for(int i = 1; i < N+1; i++){
         for(int j = num; j < AI[i]; j++){
             if(row == AJ[j]){
@@ -35,7 +36,6 @@ void makediag(double *DD, double *Aval, int *AI, int *AJ, int N) {
         row++;
         num = AI[i];
     }
-
     return;
 } 
 
@@ -45,10 +45,10 @@ void makediag(double *DD, double *Aval, int *AI, int *AJ, int N) {
 void repeatmatr(double *X, double *Y, int N) {
 
     int i;
-    
     #pragma omp parallel for private(i)
-    for (i = 0; i < N; i++) {
-        X[i] = Y[i];
+    {
+        for (i = 0; i < N; i++)
+            X[i] = Y[i];
     }
     return;
 }
@@ -62,25 +62,30 @@ void SpMV(double *Aval, int  *AI, int *AJ, double *X, double *Y, int N){
  
     double sum;
     int i;
-    #pragma omp parallel for private(i) lastprivate(sum)
-    for (i = 0; i < N; i++) {
-        sum = 0.0;
-        for (int j = AI[i]; j < AI[i+1]; j++) {
-            int m = AJ[j];
-            sum += Aval[j] * X[m];
+    #pragma omp parallel for private(i) reduction(+:sum)
+    {
+        for (i = 0; i < N; i++) 
+        {
+            sum = 0.0;
+            for (int j = AI[i]; j < AI[i+1]; j++) 
+            {
+                int m = AJ[j];
+                sum += Aval[j] * X[m];
+            }
+            Y[i] = sum;
         }
-        Y[i] = sum;
     }
     return;
 }
 
 void SpMV(double *DD, double *X, double *Y, int N) { 
 
-    int i;
+    int i = 0;
 
-    #pragma omp parallel for private(i)
-    for (i = 0; i < N; ++i) {
-        Y[i] = DD[i] * X[i];
+    #pragma omp parallel for private(i) 
+    {
+        for (i=0; i < N; i++) 
+            Y[i] = DD[i] * X[i];
     }
     return;
 }
@@ -91,10 +96,10 @@ void SpMV(double *DD, double *X, double *Y, int N) {
 void axpby(double *X, double *Y, int N, double x1, double x2){
    
     int i;
-
-    #pragma omp parallel for private(i)
-    for(i = 0 ; i < N; i++){
-        X[i] = x1 * X[i] + x2 * Y[i];
+    #pragma omp parallel for private(i) 
+    {
+        for(i=0 ; i < N; i++)
+            X[i] = x1 * X[i] + x2 * Y[i];
     }
     return;
 }
@@ -105,11 +110,11 @@ void axpby(double *X, double *Y, int N, double x1, double x2){
 double dot(double *X, double *Y, int N){
 
     double sum = 0.0;
-    int i;
 
-    #pragma omp parallel for private(i)
-    for(i=0 ; i < N; i++){
-        sum += X[i] * Y[i];
+    #pragma omp parallel for reduction(+:sum)
+    {
+        for(int i=0 ; i < N; i++)
+            sum += X[i] * Y[i];
     }
     return sum;    
 }
@@ -137,9 +142,11 @@ int solver(int N, double *Aval, int *AI, int *AJ, double *BB, double tol, int ma
     int i;
 
     #pragma omp parallel for private(i)
-    for(i=0; i<N; i++){
-        DD[i] = 0;
-        XX[i] = 0;
+    {
+        for(i=0; i<N; i++){
+            DD[i] = 0;
+            XX[i] = 0;
+        }
     }
     makediag(DD, Aval, AI, AJ, N);
 
@@ -237,7 +244,8 @@ int solver(int N, double *Aval, int *AI, int *AJ, double *BB, double tol, int ma
 
 void test_dot(int N) {
 
-    double X[N], B[N];
+    double *X = new double[N];
+    double *B = new double[N];
     for (int i = 0; i < N; i++) {
         X[i] = sin(i);
         B[i] = sin(i);
@@ -283,7 +291,10 @@ void test_dot(int N) {
 }
 
 void test_axpby(int N) {
-    double X[N], R[N], B[N];
+    double *X = new double[N];
+    double *B = new double[N];
+    double *R = new double[N];
+
     for (int i = 0; i < N; i++) {
         X[i] = sin(i);
         B[i] = sin(i);
@@ -297,12 +308,12 @@ void test_axpby(int N) {
     cout << "(AXPBY) testing sequential ops:" << endl;
     
     omp_set_num_threads(1);
+
     for(int i=0; i < Ntest; i++){
         t = omp_get_wtime();
         for(int j=0; j < Ntest; j++) {
             axpby(X, B, alpha, beta, N);
-            for(int i=0; i < N; i++)
-                R[i] = X[i];
+            repeatmatr(R,X,N);
         }
         tdotseq += omp_get_wtime() - t;
     }
@@ -322,8 +333,7 @@ void test_axpby(int N) {
             t = omp_get_wtime();
             for(int j=0; j < Ntest; j++) {
                 axpby(X, B, alpha, beta, N);
-                for(int i=0; i < N; i++)
-                    R[i] = X[i];
+                repeatmatr(R,X,N);
             }
             tdotpar += omp_get_wtime() - t;
         }
@@ -333,10 +343,12 @@ void test_axpby(int N) {
 }
 
 void test_spmv(int N) {
-    double M[N], R[N], B[N];
-    for (int i = 0; i < N; i++) {
+    double *M = new double[N];
+    double *B = new double[N];
+    double *R = new double[N];
+
+    for (int i = 0; i < N; i++)
         B[i] = sin(i);
-    }
     
     int Ntest = 20;
     double tdotseq = 0.0, t;
@@ -399,6 +411,15 @@ void test_function() {
     test_axpby(100 * 10 * 100);
     cout << endl;
     test_spmv(100 * 10 * 100);
+    cout << endl;
+
+    cout << "N: 1000000" << endl;
+    cout << endl;   
+    test_dot(100 * 100 * 100);
+    cout << endl;
+    test_axpby(100 * 100 * 100);
+    cout << endl;
+    test_spmv(100 * 100 * 100);
     cout << endl;
 }
 
