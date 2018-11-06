@@ -46,10 +46,8 @@ void repeatmatr(double *X, double *Y, int N) {
 
     int i;
     #pragma omp parallel for private(i)
-    {
         for (i = 0; i < N; i++)
             X[i] = Y[i];
-    }
     return;
 }
 
@@ -63,7 +61,6 @@ void SpMV(double *Aval, int  *AI, int *AJ, double *X, double *Y, int N){
     double sum;
     int i;
     #pragma omp parallel for private(i) reduction(+:sum)
-    {
         for (i = 0; i < N; i++) 
         {
             sum = 0.0;
@@ -74,7 +71,6 @@ void SpMV(double *Aval, int  *AI, int *AJ, double *X, double *Y, int N){
             }
             Y[i] = sum;
         }
-    }
     return;
 }
 
@@ -83,10 +79,8 @@ void SpMV(double *DD, double *X, double *Y, int N) {
     int i = 0;
 
     #pragma omp parallel for private(i) 
-    {
         for (i=0; i < N; i++) 
             Y[i] = DD[i] * X[i];
-    }
     return;
 }
 
@@ -97,10 +91,8 @@ void axpby(double *X, double *Y, int N, double x1, double x2){
    
     int i;
     #pragma omp parallel for private(i) 
-    {
         for(i=0 ; i < N; i++)
             X[i] = x1 * X[i] + x2 * Y[i];
-    }
     return;
 }
 
@@ -112,10 +104,8 @@ double dot(double *X, double *Y, int N){
     double sum = 0.0;
 
     #pragma omp parallel for reduction(+:sum)
-    {
         for(int i=0 ; i < N; i++)
             sum += X[i] * Y[i];
-    }
     return sum;    
 }
 
@@ -142,12 +132,10 @@ int solver(int N, double *Aval, int *AI, int *AJ, double *BB, double tol, int ma
     int i;
 
     #pragma omp parallel for private(i)
-    {
         for(i=0; i<N; i++){
             DD[i] = 0;
             XX[i] = 0;
         }
-    }
     makediag(DD, Aval, AI, AJ, N);
 
     double mineps = 1E-15;
